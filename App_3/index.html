@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>計算</title>
+<style>
+    body {
+        min-height: 100vh;
+        min-width: 100vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+    }
+    .wrapper {
+        text-align: center;
+    }
+
+    .Grid {
+        display: grid;
+        grid-template-rows: repeat(10, 35px);
+        grid-template-columns: repeat(15, 50px);
+        margin: 10px 0;
+    }
+    .cell {
+        box-sizing: border-box;
+        display: flex;
+        outline: 1px solid black;
+        cursor: pointer;
+        justify-content: center;
+        align-items: center;
+        font-size: 25px;
+        background: #fff;
+    }
+    button {
+        width: 150px;
+        height: 40px;
+        margin: 10px;
+        border: none;
+        border-radius: 15px;
+        background: #e0e0e0;
+        color: black;
+        font-size: 20px;
+        font-weight: bold;
+        box-shadow: 0 5px 0 #bbb;
+        cursor: pointer;
+    }
+    button:hover {box-shadow: 0 6px 0 #999;}
+    button:active {
+        position: relative;
+        top: 4px;
+        box-shadow: 0 2px 0 #999;
+    }
+    button:disabled { cursor: not-allowed;} 
+    .selected { background: darkorange; }
+    .corect   { background: lightgreen; pointer-events: none; }
+    .uncorrect { background: lightcoral; pointer-events: none; }
+
+    .progress {
+        width: 100%;
+        height: 25px;
+        background: #e0e0e0;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    #progressbar {
+        height: 100%;
+        width: 0%;
+        background: lightgreen;
+        font-weight: bold;
+    }
+    .record-container {
+        display: flex;
+        justify-content: center;
+        align-items: stretch;
+        gap: 20px;
+        margin-top: 20px;
+    }
+    .record-card {
+        flex: 1 1 33%;
+        max-width: 220px;
+        border: 3px solid black;    
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 2px 3px 6px rgba(0,0,0,0.15);
+        text-align: center;
+        padding: 0;                   
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        transition: 0.2s;
+    }
+    .record-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 3px 5px 10px rgba(0,0,0,0.25);
+    }
+
+    .record-date {
+        font-size: 13px;
+        color: #333;
+        border-bottom: 2px solid #aaa;
+        padding: 8px 0;
+    }
+    .record-text {
+        font-size: 20px;
+        font-weight: bold;
+        padding: 10px 0;
+    }
+    .record-percent {
+        font-size: 14px;
+        color: #222;
+        padding: 8px 0;
+    }
+    .mini-progress {
+        width: 80px;
+        height: 8px;
+        background: #eee;
+        border-radius: 4px;
+        overflow: hidden;
+        display: inline-block;
+        margin-left: 5px;
+    }
+    .mini-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #4caf50, #66bb6a);
+    }
+</style>
+</head>
+<body>
+<div class="wrapper">
+    <h1 id="Time">残り：120秒</h1>
+    <button id="Start">スタート</button>
+    <button id="End" disabled>終了</button>
+    <h3 id="Goal">たて・よこ隣り合う数字をクリックして、足して10になるペアを見つけよう</h3>
+    <div id="Grid" class="Grid"></div>
+    <div class="progress">
+        <div id="progressbar"></div>
+    </div>
+    <h3 id="Pair">0組発見!!</h3>
+    <h2 id="Result">&nbsp;</h2>
+    <div id="history" style="text-align: left; width: 100%; max-width: 800px;"></div>
+</div>
+</body>
+<script>
+const rows = 10;
+const cols = 15;
+let timerId = null;
+let timer = 120;
+let selectedCell = null;
+let isPlaying = false;
+
+const start = document.getElementById('Start');
+const end = document.getElementById('End');
+const grid = document.getElementById('Grid');
+const time = document.getElementById('Time');
+const pair = document.getElementById('Pair');
+const result = document.getElementById('Result');
+
+// 履歴を表示
+function showHistory() {
+const historyDiv = document.getElementById('history');
+let records = JSON.parse(localStorage.getItem('fox_game_history') || '[]');
+if (records.length === 0) {
+    historyDiv.innerHTML = '<p>記録なし</p>';
+    return;
+}
+
+let latest = records.slice(-3).reverse();
+
+let html = '<div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">';
+latest.forEach(rec => {
+    let found = Number.isFinite(rec.found) ? rec.found : 0;
+    let missed = Number.isFinite(rec.missed) ? rec.missed : 0;
+    let total = found + missed;
+    let percent = Number.isFinite(rec.percent) ? rec.percent : (total > 0 ? Math.round((found / total) * 100) : 0);
+    let dateStr = rec.date || "";
+
+    html += `
+    <div class="record-card">
+        <div class="record-date">${dateStr}</div>
+        <div class="record-body">
+            <div class="record-text">${found}組発見</div>
+            <div class="mini-progress">
+                <div class="mini-progress-bar" style="width:${percent}%;"></div>
+            </div>
+            <div class="record-percent">${percent}% 達成</div>
+        </div>
+    </div>`;
+});
+html += '</div>';
+historyDiv.innerHTML = html;
+}
+
+function saveHistory(found, percent, missed) {
+    let records = JSON.parse(localStorage.getItem('fox_game_history') || '[]');
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}`;
+    records.push({ found, missed, percent, date: dateStr });
+    if (records.length > 5) records = records.slice(-5); // 最大30件保持
+    localStorage.setItem('fox_game_history', JSON.stringify(records));
+}
+
+function makeGrid() {
+    grid.innerHTML = "";
+    for(let r=0; r<rows; r++){
+        for(let l=0; l<cols; l++){
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.dataset.row = r;
+            cell.dataset.col = l;
+            grid.appendChild(cell);
+            cell.addEventListener("click", () => click(cell));
+        }
+    }
+    document.querySelectorAll(".cell").forEach(cell => {
+        cell.style.pointerEvents = "none";
+    });
+}
+
+function countRemainingPairs() {
+    let pairs = 0;
+    const cells = Array.from(document.querySelectorAll(".cell"));
+    for(let i = 0; i < cells.length; i++){
+        const first = cells[i];
+        if(first.classList.contains("corect")) continue;
+        for(let j = i + 1; j < cells.length; j++){
+        const second = cells[j];
+        if(second.classList.contains("corect")) continue;
+
+            const r1 = parseInt(first.dataset.row);
+            const c1 = parseInt(first.dataset.col);
+            const r2 = parseInt(second.dataset.row);
+            const c2 = parseInt(second.dataset.col);
+            const isAdjacent = (Math.abs(r1 - r2) === 1 && c1 === c2) || (Math.abs(c1 - c2) === 1 && r1 === r2);
+            const firstNum = parseInt(first.textContent);
+            const secondNum = parseInt(second.textContent);
+
+            if(firstNum + secondNum === 10 && isAdjacent){
+                pairs++;
+                break;
+            }
+        }
+    }
+    return pairs;    
+}
+
+function updateProgress() {
+    const found = document.querySelectorAll('.cell.corect').length / 2;
+    const remaining = countRemainingPairs();
+    const total = found + remaining;
+    const percent = total > 0 ? Math.floor((found / total) * 100) : 100;
+    document.getElementById("progressbar").style.width = percent + "%";
+    pair.textContent = found + "組発見!!";
+}
+
+function click(cell) {
+    if(!isPlaying) return;
+    if(cell.classList.contains("selected")) {
+        cell.classList.remove("selected");
+        selectedCell = null;
+        return;
+    }
+    if(!selectedCell){
+        cell.classList.add("selected");
+        selectedCell = cell;
+    } else {
+        const first = selectedCell;
+        const second = cell;
+        const r1 = parseInt(first.dataset.row);
+        const c1 = parseInt(first.dataset.col);
+        const r2 = parseInt(second.dataset.row);
+        const c2 = parseInt(second.dataset.col);
+        const isAdjacent = (Math.abs(r1 - r2) === 1 && c1 === c2) || (Math.abs(c1 - c2) === 1 && r1 === r2);
+        const firstNum = parseInt(first.textContent);
+        const secondNum = parseInt(second.textContent);
+
+        if(firstNum + secondNum === 10 && isAdjacent){
+            first.classList.remove("selected");
+            second.classList.remove("selected");
+            first.classList.add("corect");
+            second.classList.add("corect");
+            updateProgress();
+            if(countRemainingPairs() === 0){
+                 endGame();
+            }
+        } else {
+            first.classList.remove("selected");
+            second.classList.remove("selected");
+        }
+        selectedCell = null;
+    }
+}
+
+function startGame() {
+    if(isPlaying) return;
+    isPlaying = true;
+    start.disabled = true;
+    end.disabled = false;
+    timer = 120;
+    start.innerHTML = "挑戦中...";
+    pair.textContent = "0組発見!!";
+    time.textContent = `残り：${timer}秒`;
+    result.textContent = "\u00A0";
+
+    document.querySelectorAll(".cell").forEach(cell => {
+        cell.textContent = Math.floor(Math.random()*9) + 1;
+        cell.classList.remove("selected","corect","uncorrect");
+        cell.style.pointerEvents = "auto";
+    });
+
+    totalPairs = countRemainingPairs();
+    updateProgress();
+
+    timerId = setInterval(() => {
+        timer--;
+        time.textContent = `残り：${timer}秒`;
+        if(timer <= 0){
+            clearInterval(timerId);
+            endGame();
+        }
+    }, 1000);
+}
+
+function answer() {
+    let missed = 0;
+    const cells = Array.from(document.querySelectorAll(".cell"));
+    for(let i = 0; i < cells.length; i++){
+        const first = cells[i];
+        if(first.classList.contains("corect") || first.classList.contains("uncorrect")) continue;
+
+        for(let j = i + 1; j < cells.length; j++){
+            const second = cells[j];
+            if(second.classList.contains("corect") || second.classList.contains("uncorrect")) continue;
+
+            const r1 = parseInt(first.dataset.row);
+            const c1 = parseInt(first.dataset.col);
+            const r2 = parseInt(second.dataset.row);
+            const c2 = parseInt(second.dataset.col);
+            const isAdjacent = (Math.abs(r1 - r2) === 1 && c1 === c2) || (Math.abs(c1 - c2) === 1 && r1 === r2);
+            const firstNum = parseInt(first.textContent);
+            const secondNum = parseInt(second.textContent);
+
+            if(firstNum + secondNum === 10 && isAdjacent){
+                first.classList.add("uncorrect");
+                second.classList.add("uncorrect");
+                missed++;
+                break;
+            }
+
+        }
+    }
+    return missed;
+}
+
+function endGame(){
+    clearInterval(timerId);
+    document.querySelectorAll(".cell").forEach(cell => {
+        cell.style.pointerEvents = "none";
+    });
+    start.innerHTML = "再挑戦";
+
+    const found = document.querySelectorAll('.cell.corect').length / 2;
+    const missed = answer();
+    const percent = (found + missed) > 0 ? Math.round((found / (found + missed)) * 100) : 100;
+
+    if(missed === 0){
+        result.textContent = "全問正解!!おめでとう!!";
+    } else {
+        result.textContent = `${missed}組発見できませんでした`;
+    }
+
+    start.disabled = false;
+    end.disabled = true;
+    isPlaying = false;
+    updateProgress();
+
+    saveHistory(found, percent, missed); 
+    showHistory();
+}
+
+function Reset() {
+    clearInterval(timerId);
+    timer = 120;
+    time.textContent = `残り：${timer}秒`;
+    pair.textContent = "0組発見!!";
+    result.textContent = "\u00A0";
+    start.innerHTML = "スタート";
+    start.disabled = false;
+    selectedCell = null;
+
+    document.querySelectorAll(".cell").forEach(cell => {
+        cell.textContent = "";
+        cell.style.pointerEvents = "none";
+        cell.classList.remove("selected","corect","uncorrect");
+    });
+
+    document.getElementById("progressbar").style.width = "0%";
+}
+
+makeGrid();
+start.addEventListener("click", () => {
+    if(start.textContent === "スタート"){
+        startGame();
+    } else {
+        Reset();
+    }
+});
+end.addEventListener("click", endGame);
+
+showHistory();
+</script>
+</html>
