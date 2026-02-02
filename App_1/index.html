@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>数字記憶</title>
+    <style>
+        body{
+            text-align: center;
+        }
+        .btn{
+            width: 150px;
+            height: 40px;
+            margin: 10px;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            background: #e0e0e0;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 5px 0 #bbb;
+        }
+        .btn:hover{
+            box-shadow: 0 6px 0 #999;
+        }
+        .btn:active{
+            position: relative;
+            top: 4px;
+            box-shadow: 0 2px 0 #999;
+        }
+        .btn.active{
+            background: #f90;
+            box-shadow: 0 5px 0 #c70;
+        }
+        #Time{
+            appearance: none;
+            background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><polygon points='0,0 16,0 8,8' fill='black'/></svg>") no-repeat right 10px center;
+            background-size: 12px;       
+            border: 2px solid #0072ff;    
+            border-radius: 15px;          
+            padding: 10px 40px 10px 12px; 
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            margin-right: 10px;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+        }
+        #timer{
+            width: 300px;
+            height: 60px;
+            font-size: 36px;
+            font-weight: bold;
+            border: 2px solid #333;
+            background: #f0f0f0;
+            line-height: 60px;
+            border-radius: 15px;
+            display: inline-block;
+        }
+        #g-sel{
+            margin-top: 20px;
+        }
+
+        #control{
+            display: flex;
+            flex-direction: column;
+            align-items: center;   
+            gap: 15px;
+            margin: 15px auto 25px;
+        }
+
+        #grid{
+            display: grid;
+            gap: 0;
+            justify-content: center;
+            margin: 20px auto;   
+        }
+        .cell{
+            box-sizing: border-box;
+            outline: 2px solid black;
+            background: #fff;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 50px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="g-sel">
+        <button id="matrix_1" class="btn common" >7行10列</button>
+        <button id="matrix_2" class="btn common">5行7列</button>
+        <button id="matrix_3" class="btn common">4行5列</button>
+    </div>
+    <div id="control">
+        <select id="Time">
+            <option value="1000">1秒</option>
+            <option value="2000">2秒</option>
+            <option value="3000" selected>3秒</option>
+            <option value="4000">4秒</option>
+            <option value="5000">5秒</option>
+            <option value="6000">6秒</option>
+        </select>
+        <div id="timer"></div>
+    </div>
+    <div id="grid"></div>
+    <button id="start" class="btn" type="button" onclick="start()">スタート</button>
+</body>
+<script>
+let row = 7, col = 10;
+let cells = [];
+let numbersOrder = [];
+let currentIndex = 0;
+let clickEnabled = false;
+let s_flag = false;
+let change_time = 3000;
+let timerId = null;
+
+const grid = document.getElementById("grid");
+const timerDisplay = document.getElementById("timer");
+const timeSelect = document.getElementById("Time");
+
+updateTimer();
+
+function makeGrid(rows, cols) {
+    grid.innerHTML = "";
+    cells = [];
+
+    grid.style.gridTemplateColumns = `repeat(${cols}, 80px)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, 80px)`;
+
+    for (let i = 0; i < rows * cols; i++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        grid.appendChild(cell);
+        cells.push(cell);
+
+        cell.addEventListener("click", () => {
+            if (!clickEnabled) return;
+
+            const span = cell.querySelector("span");
+            if (!span) return;
+
+            const num = Number(span.textContent);
+            span.style.visibility = "visible";
+
+            if (num === numbersOrder[currentIndex]) {
+                cell.style.background = "#66ff66";
+                currentIndex++;
+
+                if (currentIndex === numbersOrder.length) {
+                    endGame("クリア！");
+                }
+            } else {
+                cell.style.background = "#f03";
+                showAllNumbers();
+                endGame("失敗！");
+            }
+        });
+    }
+}
+
+function showAllNumbers() {
+    cells.forEach(cell => {
+        const s = cell.querySelector("span");
+        if (s) s.style.visibility = "visible";
+    });
+}
+
+function endGame(msg) {
+    clickEnabled = false;
+    s_flag = false;
+    setTimeout(() => alert(msg), 100);
+}
+
+function start() {
+    if (s_flag) return;
+    s_flag = true;
+
+    reset();
+    placeNumbers();
+    startTimer();
+}
+
+function placeNumbers() {
+    numbersOrder = [1,2,3,4,5,6,7];
+    const shuffledCells = [...cells].sort(() => Math.random() - 0.5);
+
+    numbersOrder.forEach((num, i) => {
+        const span = document.createElement("span");
+        span.textContent = num;
+        shuffledCells[i].appendChild(span);
+    });
+}
+
+function startTimer() {
+    let time = change_time;
+    updateTimer();
+
+    timerId = setInterval(() => {
+        time -= 100;
+        timerDisplay.textContent = `残り: ${(time / 1000).toFixed(1)} 秒`;
+
+        if (time <= 0) {
+            clearInterval(timerId);
+            hideNumbers();
+            clickEnabled = true;
+        }
+    }, 100);
+}
+
+function hideNumbers() {
+    cells.forEach(cell => {
+        const span = cell.querySelector("span");
+        if (span) {
+            span.style.visibility = "hidden";
+            cell.style.background = "#ccc";
+        }
+    });
+}
+
+function reset() {
+    cells.forEach(cell => {
+        cell.style.background = "#fff";
+        cell.innerHTML = "";
+    });
+    currentIndex = 0;
+    clickEnabled = false;
+}
+
+function updateTimer() {
+    timerDisplay.textContent = `残り: ${(change_time / 1000).toFixed(1)} 秒`;
+}
+
+timeSelect.addEventListener("change", () => {
+    change_time = Number(timeSelect.value);
+    updateTimer();
+});
+
+document.querySelectorAll(".common").forEach(btn => {
+    btn.addEventListener("click", () => {
+        if (s_flag) return;
+
+        document.querySelectorAll(".common").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+
+        if (btn.id === "matrix_1") makeGrid(7, 10);
+        if (btn.id === "matrix_2") makeGrid(5, 7);
+        if (btn.id === "matrix_3") makeGrid(4, 5);
+    });
+});
+
+makeGrid(7, 10);
+document.getElementById("matrix_1").classList.add("active");
+</script>
+</html>
